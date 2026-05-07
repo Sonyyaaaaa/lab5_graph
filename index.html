@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Lab 5: Освітлення та затінення (Модель Фонга)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <canvas id="webgl-canvas" width="600" height="600"></canvas>
+        
+        <div class="controls">
+            <h3>Керування сценою</h3>
+            <p>Світло анімоване (рухається навколо сфери).</p>
+            <label>
+                Колір об'єкта: 
+                <input type="color" id="objColor" value="#00aaee">
+            </label>
+            <label>
+                Колір світла: 
+                <input type="color" id="lightColor" value="#ffffff">
+            </label>
+            <label>
+                Глянець : 
+                <input type="range" id="shininess" min="1" max="100" value="30">
+            </label>
+        </div>
+    </div>
+
+    <!-- ВЕРШИННИЙ ШЕЙДЕР -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute vec3 a_normal;
+
+        uniform mat4 u_modelViewMatrix;
+        uniform mat4 u_projectionMatrix;
+        uniform mat4 u_normalMatrix; // Матриця для коректного повороту нормалей
+        uniform vec3 u_lightPosition; // Позиція світла
+
+        // Змінні, що передаються у фрагментний шейдер
+        varying vec3 v_normal;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+
+        void main() {
+            // Рахуємо позицію вершини у видовому просторі (просторі камери)
+            vec4 eyePosition = u_modelViewMatrix * a_position;
+            gl_Position = u_projectionMatrix * eyePosition;
+
+            // Перетворюємо нормаль (множимо на нормальну матрицю)
+            v_normal = mat3(u_normalMatrix) * a_normal;
+
+            // Вектор від поверхні до джерела світла
+            v_surfaceToLight = u_lightPosition - eyePosition.xyz;
+
+            // Вектор від поверхні до камери (камера в (0,0,0) у видовому просторі)
+            v_surfaceToView = -eyePosition.xyz;
+        }
+    </script>
+
+    <!-- ФРАГМЕНТНИЙ ШЕЙДЕР (Модель Фонга) -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+
+        varying vec3 v_normal;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+
+        uniform vec3 u_objectColor;
+        uniform vec3 u_lightColor;
+        uniform float u_shininess;
+
+        void main() {
+            // Нормалізуємо вектори, оскільки під час інтерполяції їх довжина змінюється
+            vec3 normal = normalize(v_normal);
+            vec3 surfaceToLightDir = normalize(v_surfaceToLight);
+            vec3 surfaceToViewDir = normalize(v_surfaceToView);
+
+            // 1. АМБІЄНТНЕ (Фонове) освітлення (Ambient)
+            vec3 ambient = 0.2 * u_objectColor; 
+
+            // 2. ДИФУЗНЕ освітлення (Diffuse) - Закон Ламберта
+            float diffuseFactor = max(dot(normal, surfaceToLightDir), 0.0);
+            vec3 diffuse = u_lightColor * u_objectColor * diffuseFactor;
+
+            // 3. ДЗЕРКАЛЬНЕ освітлення (Specular) - Модель Фонга
+            vec3 specular = vec3(0.0);
+            if (diffuseFactor > 0.0) {
+                // Вектор відбиття
+                vec3 reflectionDir = reflect(-surfaceToLightDir, normal);
+                // Кут між вектором відбиття та поглядом камери
+                float specularFactor = pow(max(dot(reflectionDir, surfaceToViewDir), 0.0), u_shininess);
+                specular = u_lightColor * specularFactor; // Відблиск має колір світла
+            }
+
+            // Фінальний колір = Фонове + Дифузне + Дзеркальне
+            gl_FragColor = vec4(ambient + diffuse + specular, 1.0);
+        }
+    </script>
+
+    <script src="script.js"></script>
+</body>
+</html>
